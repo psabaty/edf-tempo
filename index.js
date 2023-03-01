@@ -8,6 +8,7 @@ const strftime = require('strftime');
 const fs = require('fs');
 const { dirname } = require('path');
 
+const useCache = false;
 const CACHE_FILE_PATH = __dirname+'/var/cache/tempo.json';
 
 /* 
@@ -35,35 +36,36 @@ app.get('/tempo/nb', (req, res) => {
 app.get('/tempo/current', (req, res) => {
     const url = "https://particulier.edf.fr/services/rest/referentiel/searchTempoStore";
 
-    if ( !fs.existsSync(CACHE_FILE_PATH) ) {
-        fs.mkdirSync(dirname(CACHE_FILE_PATH), {recursive:true}, (err) => {
-            if (err) throw err;
-          });
-        fs.closeSync(fs.openSync(CACHE_FILE_PATH, 'a'));
-        fs.chmodSync(CACHE_FILE_PATH, 0o777)
-    }
-    else {
-        const cachedData = JSON.parse(fs.readFileSync(CACHE_FILE_PATH, 'utf8'));
-        console.log('(Date.now()-cachedData.queryTime) =  '+(Date.now()-cachedData.queryTime));
-            
-        if(true
-            && cachedData.hasOwnProperty('couleurJourJ') 
-            && cachedData.hasOwnProperty('couleurJourJ1') 
-            && cachedData.hasOwnProperty('queryTime')
-            && cachedData.couleurJourJ1 != 'NON_DEFINI' 
-            && ((Date.now()-cachedData.queryTime) < 3600*24 )
-            ) {
-
-            // use cache
-            console.log('Using Cache : '+JSON.stringify(cachedData));
-            res.send({
-                couleurJourJ: cachedData.couleurJourJ,
-                couleurJourJ1: cachedData.couleurJourJ1
+    if(useCache) {
+        if ( !fs.existsSync(CACHE_FILE_PATH) ) {
+            fs.mkdirSync(dirname(CACHE_FILE_PATH), {recursive:true}, (err) => {
+                if (err) throw err;
             });
-            return;  
+            fs.closeSync(fs.openSync(CACHE_FILE_PATH, 'a'));
+            fs.chmodSync(CACHE_FILE_PATH, 0o777)
+        }
+        else {
+            const cachedData = JSON.parse(fs.readFileSync(CACHE_FILE_PATH, 'utf8'));
+            console.log('(Date.now()-cachedData.queryTime) =  '+(Date.now()-cachedData.queryTime));
+                
+            if(true
+                && cachedData.hasOwnProperty('couleurJourJ') 
+                && cachedData.hasOwnProperty('couleurJourJ1') 
+                && cachedData.hasOwnProperty('queryTime')
+                && cachedData.couleurJourJ1 != 'NON_DEFINI' 
+                && ((Date.now()-cachedData.queryTime) < 3600*24 )
+                ) {
+
+                // use cache
+                console.log('Using Cache : '+JSON.stringify(cachedData));
+                res.send({
+                    couleurJourJ: cachedData.couleurJourJ,
+                    couleurJourJ1: cachedData.couleurJourJ1
+                });
+                return;  
+            }
         }
     }
-    
     // "else", query and cache
     axios.get(url,{
         params: {dateRelevant: strftime('%Y-%m-%d')}
@@ -74,7 +76,9 @@ app.get('/tempo/current', (req, res) => {
             couleurJourJ1: response.data.couleurJourJ1,
             queryTime: Date.now()
         }
-        fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(cachableData));
+        if(useCache) {
+            fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(cachableData));
+        }
         res.send(response.data);
     })
     .catch(error => {
